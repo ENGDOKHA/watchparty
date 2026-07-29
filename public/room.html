@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Watch Party Room</title>
+<title>غرفتنا</title>
 <style>
   :root { --bg:#0b0c15; --panel:#121428; --accent:#7c5cff; --accent2:#ff5c9d; --text:#eef; --muted:#9aa0c3; --good:#3ad29f; --warn:#ffc95c; }
   * { box-sizing:border-box; }
@@ -14,33 +14,41 @@
     grid-template-areas: "top top" "stage chat"; height:100vh; overflow:hidden;
   }
   header {
-    grid-area: top; display:flex; align-items:center; gap:10px; padding:10px 16px;
+    grid-area: top; display:flex; align-items:center; gap:8px; padding:10px 14px;
     background: var(--panel); border-bottom:1px solid rgba(255,255,255,.07); flex-wrap:wrap;
   }
   header .brand { font-weight:700; }
   header .room { color:var(--muted); font-size:13px; }
-  header .spacer { flex:1; }
-  .pill { background:#0e1030; border:1px solid rgba(255,255,255,.1); border-radius:999px; padding:6px 12px; font-size:13px; white-space:nowrap; }
+  .spacer { flex:1; }
+  .pill { background:#0e1030; border:1px solid rgba(255,255,255,.1); border-radius:999px; padding:6px 11px; font-size:12.5px; white-space:nowrap; }
   .dot { width:8px; height:8px; border-radius:50%; background:var(--good); display:inline-block; margin-right:6px; box-shadow:0 0 8px var(--good); }
   button {
-    border:0; border-radius:10px; cursor:pointer; font-weight:600; color:#fff; padding:8px 12px; font-size:14px;
+    border:0; border-radius:10px; cursor:pointer; font-weight:600; color:#fff; padding:8px 11px; font-size:13.5px;
     background: linear-gradient(120deg, var(--accent), var(--accent2));
   }
   button.ghost { background:#1a1d3a; border:1px solid rgba(255,255,255,.12); }
+  button.tiny { padding:5px 9px; font-size:12.5px; }
   button:active { transform: scale(.97); }
 
   .stage { grid-area: stage; display:flex; flex-direction:column; min-width:0; background:#000; }
   .videoWrap { flex:1; position:relative; display:flex; align-items:center; justify-content:center; min-height:0; }
   video, iframe { width:100%; height:100%; border:0; background:#000; }
   video { object-fit:contain; }
-  .empty { color:var(--muted); text-align:center; padding:32px; max-width:660px; }
+  .empty { color:var(--muted); text-align:center; padding:28px; max-width:680px; }
   .empty input { width:min(560px,82vw); padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:#0f1024; color:var(--text); }
-  .empty .tip { font-size:12px; margin-top:14px; opacity:.85; line-height:1.6; }
-  .loader { color:var(--muted); font-size:14px; text-align:center; padding:24px; max-width:640px; line-height:1.6; }
+  .empty .tip { font-size:12px; margin-top:14px; opacity:.85; line-height:1.7; }
+  .loader { color:var(--muted); font-size:14px; text-align:center; padding:24px; max-width:640px; line-height:1.7; }
   .loader b { color:var(--warn); }
+  .bufBadge {
+    position:absolute; top:12px; left:12px; background:rgba(0,0,0,.72); border:1px solid var(--warn);
+    color:var(--warn); padding:6px 12px; border-radius:999px; font-size:12.5px; display:none;
+  }
 
-  .controls { display:flex; gap:8px; align-items:center; padding:10px 12px; background:var(--panel); border-top:1px solid rgba(255,255,255,.07); flex-wrap:wrap; }
+  .controls { display:flex; gap:8px; align-items:center; padding:9px 12px; background:var(--panel); border-top:1px solid rgba(255,255,255,.07); flex-wrap:wrap; }
   .controls .muted { color:var(--muted); font-size:12px; }
+  .offsetBox { display:flex; align-items:center; gap:5px; background:#0e1030; border:1px solid rgba(255,255,255,.1); border-radius:999px; padding:4px 8px; }
+  .offsetBox span { font-size:12px; color:var(--muted); }
+  select { background:#0e1030; color:var(--text); border:1px solid rgba(255,255,255,.12); border-radius:999px; padding:6px 10px; font-size:12.5px; outline:none; cursor:pointer; }
   .pingbar { display:none; gap:8px; align-items:center; }
 
   .chat { grid-area: chat; display:flex; flex-direction:column; background:var(--panel); border-left:1px solid rgba(255,255,255,.07); min-height:0; }
@@ -56,47 +64,60 @@
   .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#1a1d3a; border:1px solid rgba(255,255,255,.15); padding:10px 16px; border-radius:12px; font-size:13px; opacity:0; transition:opacity .3s; pointer-events:none; }
   .toast.show { opacity:1; }
 
-  @media (max-width: 820px) {
-    body { grid-template-columns: 1fr; grid-template-rows: auto 55vh 1fr; grid-template-areas: "top" "stage" "chat"; }
+  @media (max-width: 860px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto 52vh 1fr; grid-template-areas: "top" "stage" "chat"; }
     .chat { border-left:0; border-top:1px solid rgba(255,255,255,.07); }
   }
 </style>
 </head>
 <body>
   <header>
-    <span class="brand">🎬 Watch Party</span>
+    <span class="brand" dir="auto">🎬 غرفتنا</span>
     <span class="room" id="roomLabel"></span>
     <span class="spacer"></span>
-    <span class="pill" id="statusPill" title="Connection to the sync server">🟡 Connecting…</span>
-    <span class="pill"><span class="dot"></span><span id="count">1</span> here</span>
-    <button class="ghost" id="testBtn">🔍 Test</button>
-    <button class="ghost" id="copyBtn">🔗 Invite</button>
-    <button class="ghost" id="changeBtn">🔄 Change</button>
+    <span class="pill" id="statusPill">🟡 Connecting…</span>
+    <span class="pill" id="hostPill">⏱ —</span>
+    <span class="pill"><span class="dot"></span><span id="count">1</span></span>
+    <button class="ghost tiny" id="leadBtn">⏱ Take lead</button>
+    <button class="ghost tiny" id="testBtn">🔍 Test</button>
+    <button class="ghost tiny" id="copyBtn">🔗 Invite</button>
   </header>
 
   <section class="stage">
     <div class="videoWrap" id="videoWrap">
+      <div class="bufBadge" id="bufBadge">⏳ Buffering — will skip ahead to catch up</div>
       <div class="empty" id="empty">
-        <p>Paste a <b>cinemana link</b> (or video ID, or a direct <b>.mp4</b> URL) to watch together.</p>
-        <input id="loadInput" placeholder="https://cinemana.shabakaty.com/video/25006  ·  or just 25006" />
-        <div style="margin-top:12px"><button id="loadBtn">Load for everyone</button></div>
+        <p>Paste a <b>cinemana link</b> (or video ID, or any direct <b>.mp4</b> URL).</p>
+        <input id="loadInput" placeholder="https://cinemana.shabakaty.com/video/25006  ·  or 25006  ·  or a .mp4 link" />
+        <div style="margin-top:12px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap">
+          <button id="loadBtn">Load for everyone</button>
+          <button id="loadMineBtn" class="ghost">Just for me (different site)</button>
+        </div>
         <div class="tip">
-          Your browser loads the video straight from cinemana on your own connection, so it works even though
-          cinemana is only reachable from your network. Both of you need that same network.
-          <br />Stuck? Press <b>🔍 Test</b> to check what's reachable.
+          <b>Same site?</b> Use “Load for everyone”.<br />
+          <b>Different sites?</b> Each of you clicks “Just for me” with your own link — the timing still syncs.
+          If your copies don’t start at the same moment, fix it once with <b>Align</b> below.
         </div>
       </div>
     </div>
 
     <div class="controls" id="controls" style="display:none">
-      <span class="muted" id="syncStatus">🎯 Synced — play, pause and seek stay matched.</span>
-      <button class="ghost" id="subBtn">💬 Add subtitle file</button>
+      <span class="muted" id="syncStatus">🎯 Synced</span>
+      <div class="offsetBox">
+        <span>Align</span>
+        <button class="ghost tiny" id="offMinus">−1s</button>
+        <span id="offVal">0.0s</span>
+        <button class="ghost tiny" id="offPlus">+1s</button>
+        <button class="ghost tiny" id="offSet" title="Say: my current frame = the group's current moment">Match now</button>
+      </div>
+      <select id="qualitySel" title="Quality — affects only your screen" style="display:none"></select>
+      <button class="ghost tiny" id="subBtn">💬 Subtitle file</button>
       <input type="file" id="subFile" accept=".srt,.vtt,text/plain" style="display:none" />
-      <span class="spacer" style="flex:1"></span>
+      <button class="ghost tiny" id="changeBtn">🔄 Change</button>
+      <span class="spacer"></span>
       <div class="pingbar" id="pingbar">
-        <button id="pingPlay">▶ Say "play now"</button>
-        <button id="pingPause" class="ghost">⏸ Say "pause now"</button>
-        <span class="muted">Embedded page: sync manually.</span>
+        <button class="tiny" id="pingPlay">▶ play now</button>
+        <button class="ghost tiny" id="pingPause">⏸ pause now</button>
       </div>
     </div>
   </section>
@@ -112,212 +133,320 @@
 
   <div class="toast" id="toast"></div>
 
+<script src="/sync-logic.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const roomId = decodeURIComponent(location.pathname.split('/r/')[1] || 'lobby');
 const myName = (params.get('name') || 'Guest').slice(0,24);
 const CINEMANA = 'https://cinemana.shabakaty.com';
-let mode = 'video';
+const S = window.SyncLogic;
+
 let currentSrc = params.get('src') || '';
 let currentCinemanaId = params.get('cid') || '';
+let myId = null, hostId = null;
+let myOffset = 0;          // seconds my copy is ahead of the shared timeline
+let lastGroupMovieTime = 0;
+let lastSeq = 0;
 
 $('roomLabel').textContent = 'Room ' + roomId;
+const isHost = () => myId !== null && myId === hostId;
 
 // ---------- helpers ----------
 function parseCinemanaId(input){
-  const s = (input||'').trim();
-  if (/^\d+$/.test(s)) return s;
-  if (/cinemana\.shabakaty\.com/i.test(s)) {
-    const nums = s.match(/\d{3,}/g);
-    if (nums) return nums.sort((a,b)=>b.length-a.length)[0];
-  }
+  const s=(input||'').trim();
+  if(/^\d+$/.test(s)) return s;
+  if(/cinemana\.shabakaty\.com/i.test(s)){ const n=s.match(/\d{3,}/g); if(n) return n.sort((a,b)=>b.length-a.length)[0]; }
   return null;
 }
 function isDirectVideo(s){ return /\.(mp4|m3u8|webm|mkv|mov|m4v)(\?|$)/i.test(s); }
-
-// SRT -> VTT (browser copy, since we now fetch subtitles here).
 function srtToVtt(t){
-  let body = t.replace(/\r+/g,'').replace(/^﻿/,'');
-  body = body.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
-  return /^﻿?WEBVTT/.test(body) ? body : 'WEBVTT\n\n' + body;
+  let b=t.replace(/\r+/g,'').replace(/^﻿/,'');
+  b=b.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g,'$1.$2');
+  return /^﻿?WEBVTT/.test(b)?b:'WEBVTT\n\n'+b;
 }
-// Turn subtitle text into a same-origin blob URL so <track> accepts it (no CORS issues).
-function subtitleBlobUrl(text){
-  return URL.createObjectURL(new Blob([srtToVtt(text)], { type:'text/vtt' }));
-}
-function pickBest(list){
-  if (!Array.isArray(list) || !list.length) return null;
-  const n = (q) => { const m = String(q?.resolution || q?.name || '').match(/(\d+)/); return m ? +m[1] : -1; };
-  return [...list].filter(q => q?.videoUrl).sort((a,b)=>n(a)-n(b)).pop() || null;
-}
+function subBlob(text){ return URL.createObjectURL(new Blob([srtToVtt(text)],{type:'text/vtt'})); }
+const resNum=S.resNum, qKey=S.qKey;
+function qLabel(q){ return String(q?.resolution || q?.name || '?'); }
+function showOffset(){ $('offVal').textContent = (myOffset>=0?'+':'') + myOffset.toFixed(1) + 's'; }
 
-// ---------- WebSocket (sync + chat only; needs no cinemana access) ----------
-let ws, wsReady = false; const outbox = [];
-function setStatus(t){ const p=$('statusPill'); if(p) p.textContent = t; }
-function send(obj){ if(wsReady) ws.send(JSON.stringify(obj)); else { outbox.push(obj); console.log('[ws] queued:', obj.type); } }
+// ---------- WebSocket ----------
+let ws, wsReady=false; const outbox=[];
+function setStatus(t){ $('statusPill').textContent=t; }
+function send(o){ if(wsReady) ws.send(JSON.stringify(o)); else outbox.push(o); }
 function connect(){
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const url = `${proto}://${location.host}/?room=${encodeURIComponent(roomId)}&name=${encodeURIComponent(myName)}`;
-  console.log('[ws] connecting', url); setStatus('🟡 Connecting…');
-  try { ws = new WebSocket(url); }
-  catch(e){ console.error('[ws] failed', e); setStatus('🔴 Offline'); setTimeout(connect, 2000); return; }
-  ws.onopen = () => { wsReady = true; setStatus('🟢 Live'); outbox.splice(0).forEach(o=>ws.send(JSON.stringify(o))); };
-  ws.onerror = (e) => { console.error('[ws] error', e); setStatus('🔴 Offline'); };
-  ws.onclose = () => { wsReady=false; setStatus('🔴 Offline (retrying…)'); setTimeout(connect,1500); };
-  ws.onmessage = (e) => handle(JSON.parse(e.data));
+  const proto = location.protocol==='https:'?'wss':'ws';
+  const url=`${proto}://${location.host}/?room=${encodeURIComponent(roomId)}&name=${encodeURIComponent(myName)}`;
+  setStatus('🟡 Connecting…');
+  try { ws=new WebSocket(url); } catch(e){ setStatus('🔴 Offline'); setTimeout(connect,2000); return; }
+  ws.onopen=()=>{ wsReady=true; setStatus('🟢 Live'); outbox.splice(0).forEach(o=>ws.send(JSON.stringify(o))); };
+  ws.onerror=()=>setStatus('🔴 Offline');
+  ws.onclose=()=>{ wsReady=false; setStatus('🔴 Offline (retrying…)'); setTimeout(connect,1500); };
+  ws.onmessage=e=>handle(JSON.parse(e.data));
 }
 
-// ---------- Player ----------
-let videoEl=null, iframeEl=null, applyingRemote=false, loadedKey='';
+// ---------- player ----------
+let videoEl=null, iframeEl=null, loadedKey='';
+let suppressUntil=0;      // ignore my own events right after applying a remote change
+let lastHardAt=0;         // last hard jump (for cooldown)
+let softTimer=null;
+let stalled=false, stallStart=0;
+let mySourceIsPrivate=false;  // true when I loaded my own different-site copy
+let qualities=[];             // quality options from cinemana for the current title
+let preferredQuality='';      // '' = auto/best; remembered for the next video too
+let switchingQuality=false;   // so a quality reload isn't mistaken for a buffering stall
 
 function clearStage(){
   const w=$('videoWrap');
   [...w.querySelectorAll('video,iframe,.loader')].forEach(n=>n.remove());
-  $('empty').style.display='none';
-  videoEl=null; iframeEl=null;
+  $('empty').style.display='none'; videoEl=null; iframeEl=null;
 }
 function showLoader(html){
   clearStage();
   const d=document.createElement('div'); d.className='loader'; d.innerHTML=html;
   $('videoWrap').appendChild(d);
 }
-function addTrack(text, label){
-  if (!videoEl) return false;
+function addTrack(text,label){
+  if(!videoEl) return false;
   const tr=document.createElement('track');
-  tr.kind='subtitles'; tr.label=label||'Subtitle'; tr.srclang='ar';
-  tr.src=subtitleBlobUrl(text); tr.default=true;
+  tr.kind='subtitles'; tr.label=label||'Subtitle'; tr.srclang='ar'; tr.src=subBlob(text); tr.default=true;
   videoEl.appendChild(tr);
-  try { const tt=videoEl.textTracks[videoEl.textTracks.length-1]; if(tt) tt.mode='showing'; } catch {}
+  try{ const tt=videoEl.textTracks[videoEl.textTracks.length-1]; if(tt) tt.mode='showing'; }catch{}
   return true;
 }
-// NOTE: no crossOrigin here — setting it would require CORS headers and break cinemana playback.
+
 function mountVideo(src){
   clearStage();
   videoEl=document.createElement('video');
-  videoEl.controls=true; videoEl.playsInline=true; videoEl.src=src;
-  videoEl.addEventListener('error', () => {
-    systemMsg('The video failed to load. If cinemana only works on your network, make sure you are on it (and not on a VPN).');
-  });
+  videoEl.controls=true; videoEl.playsInline=true; videoEl.src=src;   // no crossOrigin (would break cinemana)
   $('videoWrap').appendChild(videoEl);
-  wireVideoEvents();
+  wireVideo();
   $('controls').style.display='flex';
   $('pingbar').style.display='none';
+  showOffset();
 }
 function mountIframe(src){
   clearStage();
   iframeEl=document.createElement('iframe');
   iframeEl.src=src; iframeEl.allow='autoplay; fullscreen; encrypted-media'; iframeEl.allowFullscreen=true;
   $('videoWrap').appendChild(iframeEl);
-  $('controls').style.display='flex';
-  $('pingbar').style.display='flex';
-}
-function wireVideoEvents(){
-  const nudge=(action)=>{
-    if(applyingRemote||!videoEl) return;
-    send({ type:'sync', action, mode:'cinemana', cinemanaId:currentCinemanaId, src:currentSrc,
-           time:videoEl.currentTime, paused:videoEl.paused });
-  };
-  videoEl.addEventListener('play', ()=>nudge('play'));
-  videoEl.addEventListener('pause',()=>nudge('pause'));
-  videoEl.addEventListener('seeked',()=>nudge('seek'));
-  setInterval(()=>{ if(videoEl&&!videoEl.paused&&!applyingRemote) nudge('tick'); },4000);
+  $('controls').style.display='flex'; $('pingbar').style.display='flex';
 }
 
-// ---------- cinemana, fetched IN THE BROWSER (your network reaches it; our server can't) ----------
-async function cineJson(pathname){
-  const r = await fetch(`${CINEMANA}${pathname}`, { headers:{ 'Accept':'application/json, text/plain, */*' } });
+function wireVideo(){
+  // Intentional actions — anyone may drive these, everyone follows.
+  const intent=(action)=>{
+    if(Date.now()<suppressUntil || !videoEl) return;
+    send({ type:'sync', action, movieTime: S.toMovieTime(videoEl.currentTime, myOffset), paused: videoEl.paused,
+           ...(mySourceIsPrivate ? {} : { cinemanaId: currentCinemanaId, src: currentSrc, mode: currentCinemanaId?'cinemana':'video' }) });
+  };
+  videoEl.addEventListener('play',  ()=>intent('play'));
+  videoEl.addEventListener('pause', ()=>intent('pause'));
+  videoEl.addEventListener('seeked',()=>intent('seek'));
+
+  // Buffering: never broadcast a position while stalled — that was the bug that
+  // dragged the other person backwards. Instead, skip forward on recovery.
+  videoEl.addEventListener('waiting', ()=>{
+    if(videoEl.paused || switchingQuality) return;   // a quality swap isn't a stall
+    stalled=true; stallStart=Date.now();
+    $('bufBadge').style.display='block';
+    send({ type:'buffering', active:true });
+  });
+  const recover=()=>{
+    if(!stalled) return;
+    stalled=false;
+    $('bufBadge').style.display='none';
+    send({ type:'buffering', active:false });
+    const skip=S.stallSkip(Date.now()-stallStart);
+    if(skip>0.5 && videoEl){
+      suppressUntil=Date.now()+1200;
+      videoEl.currentTime=Math.min(videoEl.currentTime+skip, videoEl.duration||1e9);
+      systemMsg(`Skipped ${skip.toFixed(1)}s forward to rejoin.`);
+    }
+  };
+  videoEl.addEventListener('playing', recover);
+  videoEl.addEventListener('canplaythrough', recover);
+
+  // Heartbeat: ONLY the timing leader reports position, and never while stalled.
+  setInterval(()=>{
+    if(!videoEl || videoEl.paused || stalled || !isHost()) return;
+    send({ type:'sync', action:'tick', movieTime:S.toMovieTime(videoEl.currentTime,myOffset), paused:false });
+  }, 3000);
+}
+
+// ---------- quality: personal to each viewer, never broadcast ----------
+function buildQualityUI(list){
+  qualities=S.sortedQualities(list);
+  const sel=$('qualitySel');
+  sel.innerHTML='';
+  if(qualities.length<2){ sel.style.display='none'; return; }
+  sel.style.display='';
+  const auto=document.createElement('option');
+  auto.value=''; auto.textContent='Quality: Auto (best)';
+  sel.appendChild(auto);
+  qualities.forEach(q=>{
+    const o=document.createElement('option');
+    o.value=qKey(q); o.textContent='Quality: '+qLabel(q);
+    sel.appendChild(o);
+  });
+  // Keep the viewer's remembered choice if this title offers it.
+  sel.value = qualities.some(q=>qKey(q)===preferredQuality) ? preferredQuality : '';
+}
+function resolveQuality(){ return S.chooseQuality(qualities, preferredQuality); }
+
+// Swap the file underneath the player while holding position — local only,
+// so it never sends a seek and never disturbs the other person.
+function switchQuality(key){
+  preferredQuality=key;
+  const q=resolveQuality();
+  if(!q||!videoEl){ return; }
+  const at=videoEl.currentTime, wasPlaying=!videoEl.paused;
+  switchingQuality=true;
+  suppressUntil=Date.now()+2500;      // swallow the resulting seek/play/pause events
+  currentSrc=q.videoUrl;
+  videoEl.src=q.videoUrl;
+  videoEl.load();
+  const restore=()=>{
+    try{ videoEl.currentTime=at; }catch{}
+    if(wasPlaying) videoEl.play().catch(()=>{});
+    // subtitle <track> children survive the src swap; make sure one is visible again
+    try{ const tt=videoEl.textTracks; if(tt&&tt.length) tt[0].mode='showing'; }catch{}
+    setTimeout(()=>{ switchingQuality=false; }, 600);
+  };
+  videoEl.addEventListener('loadedmetadata', restore, { once:true });
+  systemMsg(`Your quality: ${key?qLabel(q):'Auto ('+qLabel(q)+')'} — only on your screen.`);
+}
+
+// ---------- applying remote state ----------
+function applyIntent(m){
+  if(!videoEl) return;
+  const target=S.toLocalTime(m.movieTime, myOffset);
+  suppressUntil=Date.now()+1200;
+  if(isFinite(target) && Math.abs(videoEl.currentTime-target)>0.3) videoEl.currentTime=target;
+  if(m.paused && !videoEl.paused) videoEl.pause();
+  if(!m.paused && videoEl.paused) videoEl.play().catch(()=>{});
+}
+function applyTick(m){
+  if(!videoEl || videoEl.paused || stalled) return;   // stalled: let recovery handle it
+  const target=S.toLocalTime(m.movieTime, myOffset);
+  const drift=videoEl.currentTime-target;
+  const d=S.decide(drift, Date.now(), lastHardAt);
+  if(d.action==='hard'){
+    lastHardAt=Date.now(); suppressUntil=Date.now()+1200;
+    videoEl.currentTime=target; videoEl.playbackRate=1;
+    $('syncStatus').textContent=`🎯 Re-synced (${drift>0?'+':''}${drift.toFixed(1)}s)`;
+  } else if(d.action==='soft'){
+    videoEl.playbackRate=d.rate;
+    $('syncStatus').textContent=`🎯 Easing ${drift>0?'back':'forward'} (${drift.toFixed(1)}s)`;
+    clearTimeout(softTimer);
+    softTimer=setTimeout(()=>{ if(videoEl) videoEl.playbackRate=1; $('syncStatus').textContent='🎯 Synced'; }, 2500);
+  } else {
+    if(videoEl.playbackRate!==1) videoEl.playbackRate=1;
+    $('syncStatus').textContent='🎯 Synced';
+  }
+}
+
+async function applyState(m, isIntent){
+  lastGroupMovieTime = typeof m.movieTime==='number' ? m.movieTime : lastGroupMovieTime;
+  // Only follow the room's source if I haven't chosen my own (cross-site case).
+  if(!mySourceIsPrivate){
+    if(m.mode==='cinemana' && m.cinemanaId){
+      if(loadedKey!=='cine:'+m.cinemanaId) await loadCinemana(m.cinemanaId);
+    } else if(m.mode==='iframe' && m.src){
+      if(loadedKey!=='iframe:'+m.src){ mountIframe(m.src); loadedKey='iframe:'+m.src; }
+    } else if(m.src){
+      if(loadedKey!=='video:'+m.src){ currentSrc=m.src; mountVideo(m.src); loadedKey='video:'+m.src; }
+    }
+  }
+  if(isIntent) applyIntent(m); else applyTick(m);
+}
+
+// ---------- cinemana (fetched by the browser, on your own network) ----------
+async function cineJson(p){
+  const r=await fetch(`${CINEMANA}${p}`,{headers:{Accept:'application/json, text/plain, */*'}});
   if(!r.ok) throw new Error('HTTP '+r.status);
   return r.json();
 }
 async function loadCinemana(id){
-  currentCinemanaId=id; mode='cinemana';
+  currentCinemanaId=id;
   showLoader('Loading from cinemana on <b>your</b> connection…');
-  let files=null, info=null, subs=null;
-  try {
-    [files, info, subs] = await Promise.all([
+  let files,info,subs;
+  try{
+    [files,info,subs]=await Promise.all([
       cineJson(`/api/android/transcoddedFiles/id/${id}`),
       cineJson(`/api/android/allVideoInfo/id/${id}`).catch(()=>null),
       cineJson(`/api/android/translationFiles/id/${id}`).catch(()=>null),
     ]);
-  } catch (e) {
-    showLoader(
-      `Could not reach cinemana from your browser (<b>${e.message}</b>).<br><br>` +
-      `Either you are not on the network where cinemana works, or cinemana blocks direct browser requests (CORS).<br><br>` +
-      `Workaround: open the movie on cinemana, press <b>F12 → Network → Media</b>, copy the <b>.mp4</b> link, and paste that here with 🔄 Change.`
-    );
+  }catch(e){
+    showLoader(`Could not reach cinemana from your browser (<b>${e.message}</b>).<br><br>`+
+      `Either you're not on the network where cinemana works, or it blocks direct browser requests.<br><br>`+
+      `Workaround: on cinemana press <b>F12 → Network → Media</b>, copy the <b>.mp4</b> link, and load that here.`);
     return;
   }
-  const best = pickBest(files);
-  if(!best){ showLoader('No playable file found for this ID.'); return; }
+  buildQualityUI(files);
+  const chosen=resolveQuality();           // honours this viewer's remembered choice
+  if(!chosen){ showLoader('No playable file found for this ID.'); return; }
+  currentSrc=chosen.videoUrl;
+  mountVideo(chosen.videoUrl);
+  loadedKey='cine:'+id;
+  const title=(info&&(info.en_title||info.ar_title||info.other_title))||('Video '+id);
+  systemMsg(`Loaded "${String(title).trim()}" — your quality: ${qLabel(chosen)}${qualities.length>1?' (changeable, only for you)':''}.`);
 
-  currentSrc = best.videoUrl;
-  mountVideo(best.videoUrl);
-  const title = (info && (info.en_title || info.ar_title || info.other_title)) || ('Video ' + id);
-  loadedKey = 'cine:' + id;
-  systemMsg(`Loaded "${String(title).trim()}" (${best.name || best.resolution || ''}).`);
-
-  // Subtitles: fetch them here too, then attach as blob tracks.
-  const tracks = (subs && (Array.isArray(subs.translations) ? subs.translations : (Array.isArray(subs)?subs:[]))) || [];
-  const usable = tracks.map(t=>({ lang:(t.name||t.type||'sub')+'', url:t.file||t.url }))
-                       .filter(t=>t.url && !/defaultImages\/loading\.gif/i.test(t.url));
-  if(!usable.length){ systemMsg('No subtitles listed for this title. You can add a .srt file with "Add subtitle file".'); return; }
-
+  const raw=(subs&&(Array.isArray(subs.translations)?subs.translations:(Array.isArray(subs)?subs:[])))||[];
+  const usable=raw.map(t=>({lang:(t.name||t.type||'sub')+'',url:t.file||t.url}))
+                  .filter(t=>t.url&&!/defaultImages\/loading\.gif/i.test(t.url));
   let added=0;
   for(const t of usable.slice(0,6)){
-    try { const r=await fetch(t.url); if(!r.ok) continue; addTrack(await r.text(), t.lang); added++; }
-    catch { /* CORS or network — try the next one */ }
+    try{ const r=await fetch(t.url); if(!r.ok) continue; addTrack(await r.text(),t.lang); added++; }catch{}
   }
-  systemMsg(added
-    ? `${added} subtitle track(s) loaded — pick one with the player's CC button.`
-    : 'Subtitles could not be downloaded by the browser (blocked). Use "💬 Add subtitle file" to load a .srt from your PC.');
-}
-
-function applyPlayback(st){
-  if(!videoEl) return;
-  applyingRemote=true;
-  if(Math.abs(videoEl.currentTime-st.time)>0.75 || st.action==='seek') videoEl.currentTime=st.time;
-  if(st.paused && !videoEl.paused) videoEl.pause();
-  if(!st.paused && videoEl.paused) videoEl.play().catch(()=>{});
-  setTimeout(()=>{applyingRemote=false;},250);
-}
-async function applyState(st){
-  if(!st) return;
-  if(st.mode==='cinemana' && st.cinemanaId){
-    if(loadedKey!=='cine:'+st.cinemanaId) await loadCinemana(st.cinemanaId);
-    applyPlayback(st);
-  } else if(st.mode==='iframe' && st.src){
-    if(loadedKey!=='iframe:'+st.src){ mountIframe(st.src); loadedKey='iframe:'+st.src; }
-  } else if(st.src){
-    if(loadedKey!=='video:'+st.src){ currentSrc=st.src; mountVideo(st.src); loadedKey='video:'+st.src; }
-    applyPlayback(st);
-  }
+  if(added) systemMsg(`${added} subtitle track(s) loaded — pick one with the CC button.`);
+  else if(usable.length) systemMsg('Subtitles were blocked by the browser. Use “💬 Subtitle file” to load a .srt from your PC.');
 }
 
 // ---------- messages ----------
 function handle(m){
+  if((m.type==='sync'||m.type==='load') && !S.isFresh(m.seq,lastSeq)) return;  // drop stale/out-of-order
+  if(typeof m.seq==='number') lastSeq=m.seq;
+
   switch(m.type){
     case 'welcome':
+      myId=m.youAre; hostId=m.hostId; lastSeq=m.seq||0; updateHostPill();
       $('count').textContent=m.count;
       (m.chat||[]).forEach(c=>addChat(c,false));
-      if(m.state && (m.state.src||m.state.cinemanaId)) applyState(m.state);
-      else if(currentCinemanaId) doLoad(currentCinemanaId);
-      else if(currentSrc) doLoad(currentSrc);
+      if(m.state&&(m.state.src||m.state.cinemanaId)) applyState(m.state,true);
+      else if(currentCinemanaId) doLoad(currentCinemanaId,false);
+      else if(currentSrc) doLoad(currentSrc,false);
       break;
+    case 'host': hostId=m.hostId; updateHostPill(); break;
     case 'presence': $('count').textContent=m.count; systemMsg(`${m.name} ${m.event==='join'?'joined':'left'}`); break;
-    case 'sync': applyState(m); if(m.action&&m.action!=='tick') toast(`${m.by} pressed ${m.action}`); break;
-    case 'load': applyState(m); systemMsg(`${m.by} loaded a new video`); break;
-    case 'chat': addChat(m, m.name===myName); break;
-    case 'ping': toast(`👉 ${m.by}: ${m.action} now!`); flashPing(m.action); break;
+    case 'sync':
+      applyState(m, m.action!=='tick');
+      if(m.action&&m.action!=='tick') toast(`${m.by} pressed ${m.action}`);
+      break;
+    case 'load': mySourceIsPrivate=false; applyState(m,true); systemMsg(`${m.by} loaded a video for everyone`); break;
+    case 'chat': m.name==='system' ? systemMsg(m.text) : addChat(m,m.name===myName); break;
+    case 'buffering': systemMsg(`${m.by} is ${m.active?'buffering…':'back'}`); break;
+    case 'ping': toast(`👉 ${m.by}: ${m.action} now!`); break;
   }
 }
-function doLoad(input){
+function updateHostPill(){
+  $('hostPill').textContent = isHost() ? '⏱ You lead timing' : '⏱ Following';
+}
+
+function doLoad(input, forEveryone){
   const src=(input||'').trim();
-  if(!src){ systemMsg('Paste a cinemana link, an ID, or a .mp4 URL first.'); return; }
+  if(!src){ systemMsg('Paste a link first.'); return; }
+  mySourceIsPrivate=!forEveryone;
   const cid=parseCinemanaId(input);
-  if(cid){ send({type:'load',mode:'cinemana',cinemanaId:cid}); loadCinemana(cid); return; }
-  if(isDirectVideo(src)){ send({type:'load',mode:'video',src}); currentSrc=src; mountVideo(src); loadedKey='video:'+src; return; }
-  send({type:'load',mode:'iframe',src}); mountIframe(src); loadedKey='iframe:'+src;
+  if(cid){ if(forEveryone) send({type:'load',mode:'cinemana',cinemanaId:cid}); loadCinemana(cid); return; }
+  if(isDirectVideo(src)){
+    buildQualityUI([]);            // a single file has no alternates
+    if(forEveryone) send({type:'load',mode:'video',src});
+    currentSrc=src; currentCinemanaId=''; mountVideo(src); loadedKey='video:'+src; return;
+  }
+  buildQualityUI([]);
+  if(forEveryone) send({type:'load',mode:'iframe',src});
+  mountIframe(src); loadedKey='iframe:'+src;
 }
 
 // ---------- chat ----------
@@ -335,44 +464,54 @@ function sendChat(){ const t=$('chatInput').value.trim(); if(!t) return; send({t
 
 // ---------- diagnostics ----------
 async function runDiag(){
-  systemMsg('--- connection test ---');
-  systemMsg('Sync server: ' + (wsReady ? 'OK (chat + sync working)' : 'NOT connected'));
-  try {
-    const r = await fetch(`${CINEMANA}/api/android/transcoddedFiles/id/25006`, { headers:{Accept:'application/json'} });
-    systemMsg('Cinemana API: reachable (HTTP ' + r.status + ')');
-    try { const j = await r.json(); systemMsg('Cinemana data: readable, ' + (Array.isArray(j)?j.length:0) + ' quality option(s)'); }
-    catch { systemMsg('Cinemana data: reachable but unreadable'); }
-  } catch (e) {
-    systemMsg('Cinemana API: BLOCKED from your browser (' + e.message + ') — likely CORS or wrong network.');
-  }
-  systemMsg('--- end of test ---');
+  systemMsg('--- test ---');
+  systemMsg('Sync server: '+(wsReady?'OK':'NOT connected'));
+  systemMsg('Timing role: '+(isHost()?'leader':'follower'));
+  try{
+    const r=await fetch(`${CINEMANA}/api/android/transcoddedFiles/id/25006`,{headers:{Accept:'application/json'}});
+    systemMsg('Cinemana API: reachable (HTTP '+r.status+')');
+    try{ const j=await r.json(); systemMsg('Cinemana data: readable, '+(Array.isArray(j)?j.length:0)+' quality option(s)'); }
+    catch{ systemMsg('Cinemana data: reachable but unreadable'); }
+  }catch(e){ systemMsg('Cinemana API: BLOCKED from your browser ('+e.message+')'); }
+  systemMsg('--- end ---');
 }
 
 // ---------- wiring ----------
 $('sendBtn').onclick=sendChat;
 $('chatInput').addEventListener('keydown',e=>{ if(e.key==='Enter') sendChat(); });
-$('loadBtn').onclick=()=>{ const v=$('loadInput').value.trim(); if(v) doLoad(v); else systemMsg('Paste a link first.'); };
-$('changeBtn').onclick=()=>{ const v=prompt('Cinemana link / ID / .mp4 URL:', currentCinemanaId||currentSrc); if(v) doLoad(v.trim()); };
+$('loadBtn').onclick=()=>doLoad($('loadInput').value,true);
+$('loadMineBtn').onclick=()=>{ doLoad($('loadInput').value,false); systemMsg('Loaded only for you — timing still syncs. Use Align if your copy is offset.'); };
+$('changeBtn').onclick=()=>{ const v=prompt('Link / ID / .mp4 URL:',currentCinemanaId||currentSrc); if(v) doLoad(v.trim(), !mySourceIsPrivate); };
 $('testBtn').onclick=runDiag;
+$('leadBtn').onclick=()=>{ send({type:'claimHost'}); toast('You are the timing leader'); };
+$('offMinus').onclick=()=>{ myOffset-=1; showOffset(); };
+$('offPlus').onclick =()=>{ myOffset+=1; showOffset(); };
+$('offSet').onclick=()=>{
+  if(!videoEl) return;
+  myOffset = videoEl.currentTime - lastGroupMovieTime;
+  showOffset(); toast('Aligned — this frame matches the group');
+  systemMsg(`Alignment set to ${myOffset.toFixed(1)}s for your copy.`);
+};
+$('qualitySel').onchange=e=>switchQuality(e.target.value);
 $('subBtn').onclick=()=>$('subFile').click();
-$('subFile').onchange=(e)=>{
+$('subFile').onchange=e=>{
   const f=e.target.files[0]; if(!f) return;
   const fr=new FileReader();
-  fr.onload=()=>{ addTrack(fr.result, f.name.replace(/\.[^.]+$/,'')) ? systemMsg('Subtitle "'+f.name+'" added — enable it with the CC button.') : systemMsg('Load a video first.'); };
-  fr.readAsText(f, 'utf-8');
+  fr.onload=()=>{ addTrack(fr.result,f.name.replace(/\.[^.]+$/,'')) ? systemMsg('Subtitle added — enable with CC.') : systemMsg('Load a video first.'); };
+  fr.readAsText(f,'utf-8');
 };
 $('copyBtn').onclick=async()=>{
   const q=new URLSearchParams({name:'Guest'});
-  if(currentCinemanaId) q.set('cid',currentCinemanaId); else if(currentSrc) q.set('src',currentSrc);
+  if(!mySourceIsPrivate){ if(currentCinemanaId) q.set('cid',currentCinemanaId); else if(currentSrc) q.set('src',currentSrc); }
   const url=`${location.origin}/r/${encodeURIComponent(roomId)}?${q.toString()}`;
-  try{ await navigator.clipboard.writeText(url); toast('Invite link copied!'); }catch{ prompt('Copy this link:',url); }
+  try{ await navigator.clipboard.writeText(url); toast('Invite link copied!'); }catch{ prompt('Copy:',url); }
 };
 $('pingPlay').onclick=()=>{ send({type:'ping',action:'PLAY'}); toast('Sent: play now'); };
 $('pingPause').onclick=()=>{ send({type:'ping',action:'PAUSE'}); toast('Sent: pause now'); };
-function flashPing(a){ const b=a==='PLAY'?$('pingPlay'):$('pingPause'); b.style.outline='3px solid var(--good)'; setTimeout(()=>b.style.outline='',1200); }
 let toastTimer;
 function toast(t){ const e=$('toast'); e.textContent=t; e.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>e.classList.remove('show'),2200); }
 
+showOffset();
 connect();
 </script>
 </body>

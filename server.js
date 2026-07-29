@@ -1,4 +1,4 @@
-// Cinema Watch Party — sync + chat relay server, with a cinemana resolver.
+// غرفتنا (Ghurfatna) — sync + chat relay server, with a cinemana resolver.
 // Express serves the UI and proxies cinemana's API (streams + subtitles);
 // ws relays play/pause/seek and chat between everyone in a room.
 const path = require('path');
@@ -131,15 +131,19 @@ app.get('/r/:roomId', (_req, res) => res.sendFile(path.join(__dirname, 'public',
 // ---------- WebSocket sync + chat ----------
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
-const rooms = new Map(); // roomId -> { clients:Set, state, chat:[] }
+const rooms = new Map(); // roomId -> { clients:Set, state, chat:[], hostId, seq }
+let nextClientId = 1;
 
 function getRoom(roomId) {
   let room = rooms.get(roomId);
   if (!room) {
     room = {
       clients: new Set(),
-      state: { mode: 'video', src: null, cinemanaId: null, time: 0, paused: true, updatedAt: Date.now() },
+      // movieTime = position on the SHARED timeline (each viewer maps it to their own copy)
+      state: { mode: 'video', src: null, cinemanaId: null, movieTime: 0, paused: true, updatedAt: Date.now() },
       chat: [],
+      hostId: null,   // the timing leader: only their drift reports are authoritative
+      seq: 0,         // increments on every state change so clients can drop stale messages
     };
     rooms.set(roomId, room);
   }
@@ -149,40 +153,59 @@ function broadcast(room, data, except) {
   const msg = JSON.stringify(data);
   for (const c of room.clients) if (c !== except && c.readyState === 1) c.send(msg);
 }
+function hostName(room) {
+  for (const c of room.clients) if (c.clientId === room.hostId) return c.name;
+  return null;
+}
+function announceHost(room) {
+  broadcast(room, { type: 'host', hostId: room.hostId, hostName: hostName(room) });
+}
 
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, 'http://localhost');
   const roomId = (url.searchParams.get('room') || 'lobby').slice(0, 64);
   const name = (url.searchParams.get('name') || 'Guest').slice(0, 24);
   const room = getRoom(roomId);
-  ws.roomId = roomId; ws.name = name;
+  ws.roomId = roomId; ws.name = name; ws.clientId = nextClientId++;
   room.clients.add(ws);
+  if (room.hostId === null) room.hostId = ws.clientId; // first person leads the timing
 
-  ws.send(JSON.stringify({ type: 'welcome', state: room.state, chat: room.chat, count: room.clients.size }));
+  ws.send(JSON.stringify({
+    type: 'welcome', state: room.state, chat: room.chat, count: room.clients.size,
+    youAre: ws.clientId, hostId: room.hostId, hostName: hostName(room), seq: room.seq,
+  }));
   broadcast(room, { type: 'presence', count: room.clients.size, name, event: 'join' }, ws);
+  announceHost(room);
 
   ws.on('message', (raw) => {
     let data; try { data = JSON.parse(raw); } catch { return; }
     switch (data.type) {
       case 'sync': {
+        const intentional = data.action === 'play' || data.action === 'pause' || data.action === 'seek';
+        // Drift heartbeats ('tick') are only trusted from the timing leader.
+        // This is what stops the back-and-forth: a buffering follower can no longer
+        // drag everyone else back to its frozen position.
+        if (!intentional && ws.clientId !== room.hostId) return;
+
         room.state = {
           mode: data.mode ?? room.state.mode,
           src: data.src ?? room.state.src,
           cinemanaId: data.cinemanaId ?? room.state.cinemanaId,
-          time: typeof data.time === 'number' ? data.time : room.state.time,
+          movieTime: typeof data.movieTime === 'number' ? data.movieTime : room.state.movieTime,
           paused: typeof data.paused === 'boolean' ? data.paused : room.state.paused,
           updatedAt: Date.now(),
         };
-        broadcast(room, { type: 'sync', ...room.state, by: name, action: data.action }, ws);
+        room.seq++;
+        broadcast(room, { type: 'sync', ...room.state, seq: room.seq, by: name, action: data.action }, ws);
         break;
       }
       case 'load': {
         room.state = {
           mode: data.mode || 'video', src: data.src || null, cinemanaId: data.cinemanaId || null,
-          time: 0, paused: true, updatedAt: Date.now(),
+          movieTime: 0, paused: true, updatedAt: Date.now(),
         };
-        room.chat = [];
-        broadcast(room, { type: 'load', ...room.state, by: name });
+        room.seq++;
+        broadcast(room, { type: 'load', ...room.state, seq: room.seq, by: name });
         break;
       }
       case 'chat': {
@@ -192,6 +215,14 @@ wss.on('connection', (ws, req) => {
         broadcast(room, { type: 'chat', ...entry });
         break;
       }
+      case 'claimHost': {
+        room.hostId = ws.clientId;
+        announceHost(room);
+        broadcast(room, { type: 'chat', name: 'system', text: `${name} is now the timing leader.`, t: Date.now() });
+        break;
+      }
+      // A viewer reports they are buffering — purely informational, never moves anyone.
+      case 'buffering': broadcast(room, { type: 'buffering', by: name, active: !!data.active }, ws); break;
       case 'ping': broadcast(room, { type: 'ping', by: name, action: data.action }, ws); break;
     }
   });
@@ -199,6 +230,11 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     room.clients.delete(ws);
     broadcast(room, { type: 'presence', count: room.clients.size, name, event: 'leave' });
+    if (room.hostId === ws.clientId) {
+      const next = room.clients.values().next().value;
+      room.hostId = next ? next.clientId : null;
+      if (next) announceHost(room);
+    }
     if (room.clients.size === 0) setTimeout(() => { if (room.clients.size === 0) rooms.delete(roomId); }, 5 * 60 * 1000);
   });
 });
@@ -207,5 +243,5 @@ wss.on('connection', (ws, req) => {
 module.exports = { srtToVtt, pickBest, resolveCinemana };
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
-  server.listen(PORT, () => console.log(`Watch party running on http://localhost:${PORT}`));
+  server.listen(PORT, () => console.log(`Ghurfatna running on http://localhost:${PORT}`));
 }

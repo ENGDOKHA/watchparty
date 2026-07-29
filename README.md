@@ -1,4 +1,4 @@
-# 🎬 Cinema Watch Party
+# 🎬 غرفتنا (Ghurfatna)
 
 Watch a **cinemana.shabakaty.com** video **in perfect sync** with a friend — with **the site's real subtitles as toggleable CC** — plus **live chat** on the side. Rave/Teleparty-style, as a plain website.
 
@@ -74,6 +74,31 @@ Share the `https://…` URL it prints.
 
 ---
 
+## Per-viewer settings (independent for each person)
+
+These never affect the other person — only the shared timeline is synced:
+
+| Control | What it does |
+|---|---|
+| **Quality** dropdown | Each viewer picks their own resolution (or Auto = best). Switching holds your position and doesn't send a seek, so the other person sees nothing. Your choice is remembered for the next video too. |
+| **Align** (−1s / +1s / Match now) | Corrects an offset between two different copies of the same movie. |
+| **💬 Subtitle file** | Loads a local `.srt`/`.vtt` as CC, just for you. |
+| **⏱ Take lead** | Become the timing leader. |
+
+## Watching from two different sites
+
+Each person pastes their own link and clicks **"Just for me (different site)"**. Only play/pause/seek/time is shared. If the copies don't start at the same frame, get to the same moment and press **Match now** once.
+
+## How the sync stays stable
+
+The old naive approach oscillates: one person buffers, broadcasts a frozen position, the other jumps back, that jump echoes back, and both rubber-band. Fixes, all in `public/sync-logic.js` (unit-tested):
+
+- **One timing leader.** Only the leader's drift heartbeats are authoritative; the server drops everyone else's. Play/pause/seek still work from either side.
+- **Stalls are never broadcast**, so a buffering viewer can't drag anyone backwards.
+- **Skip forward on recovery** — after buffering you jump ahead to rejoin the group instead of resuming where you froze (capped at 90s).
+- **Deadband + easing.** Drift under 0.35s is ignored; up to 2.5s is smoothed out with a ±5% playback-speed nudge; only bigger gaps cause a jump, and never more than once every 4s.
+- **Sequence numbers** drop stale/out-of-order messages.
+
 ## API endpoints (used internally)
 
 - `GET /api/cinemana/:id` → `{ title, videoUrl, quality, subtitles:[{lang,url}] }`
@@ -89,13 +114,15 @@ watchparty/
 ├── package.json
 ├── public/
 │   ├── index.html     # Create/join a room
-│   └── room.html      # Player (with CC), live chat, sync logic
-├── smoketest.js       # Server test: sync + chat + late-join catch-up
-├── unittest.js        # Logic test: SRT→VTT, quality pick, id parse, resolver (mocked)
+│   ├── room.html      # Player (CC + quality), live chat, sync
+│   └── sync-logic.js  # Pure sync/quality math, shared with the tests
+├── smoketest.js       # Server test: relay, catch-up, leader rules
+├── unittest.js        # Logic test: drift, offsets, stalls, quality, SRT→VTT
+├── push.bat           # One-click: copy files, commit, push (Windows)
 └── README.md
 ```
 
-Run the tests any time: `node unittest.js` and `node smoketest.js` (both print ✅).
+Run the tests any time: `node unittest.js` (37 checks) and `node smoketest.js` (7 checks) — both print ✅.
 
 ---
 

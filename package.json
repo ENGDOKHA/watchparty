@@ -1,7 +1,7 @@
 {
-  "name": "cinema-watchparty",
+  "name": "ghurfatna",
   "version": "1.0.0",
-  "description": "Watch cinemana videos together in sync, with live chat.",
+  "description": "غرفتنا — watch videos together in sync, with live chat.",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {

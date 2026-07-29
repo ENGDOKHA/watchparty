@@ -53,5 +53,55 @@ global.fetch = async (url) => {
   ok('resolve drops loading.gif sub', r.subtitles.length === 2);
   ok('resolve keeps ar + en', r.subtitles.map(s=>s.lang).sort().join(',') === 'ar,en');
   global.fetch = savedFetch;
+
+  // ---------- 5) sync logic: the anti-oscillation rules ----------
+  const S = require('./public/sync-logic.js');
+
+  ok('tiny drift is ignored (no fiddling)', S.decide(0.2, 10000, 0).action === 'none');
+  ok('tiny drift keeps rate 1', S.decide(0.2, 10000, 0).rate === 1);
+
+  const softAhead = S.decide(1.0, 10000, 0);
+  ok('medium drift eases, never jumps', softAhead.action === 'soft');
+  ok('ahead -> slow down', softAhead.rate < 1);
+  ok('behind -> speed up', S.decide(-1.0, 10000, 0).rate > 1);
+
+  ok('big drift jumps once', S.decide(10, 10000, 0).action === 'hard');
+  // The cooldown is the key ping-pong guard: a second big correction right away must NOT jump.
+  ok('no second jump within cooldown', S.decide(10, 10000, 9000).action === 'soft');
+  ok('jump allowed after cooldown', S.decide(10, 20000, 10000).action === 'hard');
+  ok('NaN drift is safe', S.decide(NaN, 10000, 0).action === 'none');
+
+  // offset mapping for two different sites' copies
+  ok('local->movie subtracts offset', S.toMovieTime(65, 5) === 60);
+  ok('movie->local adds offset', S.toLocalTime(60, 5) === 65);
+  ok('offset round-trips', S.toLocalTime(S.toMovieTime(123.5, -7.5), -7.5) === 123.5);
+
+  // stall recovery skips forward (continue with the group, don't resume from the freeze)
+  ok('stall skip converts ms to s', Math.abs(S.stallSkip(4000) - 4) < 1e-9);
+  ok('stall skip is capped', S.stallSkip(10 * 60 * 1000) === S.MAX_SKIP);
+  ok('negative stall is 0', S.stallSkip(-5) === 0);
+
+  // stale message rejection
+  ok('newer seq accepted', S.isFresh(5, 4) === true);
+  ok('older seq rejected', S.isFresh(3, 4) === false);
+  ok('same seq rejected', S.isFresh(4, 4) === false);
+
+  // ---------- 6) per-viewer quality choice ----------
+  const QL = [
+    { name:'mp4-480',  resolution:'480p',  videoUrl:'u480' },
+    { name:'mp4-1080', resolution:'1080p', videoUrl:'u1080' },
+    { name:'mp4-720',  resolution:'720p',  videoUrl:'u720' },
+    { name:'mp4-2160', resolution:'2160p' },              // unplayable, no url
+  ];
+  ok('auto picks highest playable', S.chooseQuality(QL, '').videoUrl === 'u1080');
+  ok('preference respected', S.chooseQuality(QL, 'mp4-480').videoUrl === 'u480');
+  ok('unknown preference falls back to best', S.chooseQuality(QL, 'mp4-9999').videoUrl === 'u1080');
+  ok('empty list -> null', S.chooseQuality([], 'mp4-480') === null);
+  ok('unplayable entries excluded', S.sortedQualities(QL).every(q => !!q.videoUrl));
+  ok('dropdown order is highest first', S.sortedQualities(QL).map(q=>q.resolution).join(',') === '1080p,720p,480p');
+  // Two viewers, same list, different choices -> different streams (independent quality).
+  ok('viewers get independent streams',
+     S.chooseQuality(QL,'mp4-480').videoUrl !== S.chooseQuality(QL,'mp4-1080').videoUrl);
+
   console.log(`\nUNIT: ${pass} checks passed ✅`);
 })().catch(e => { console.error('UNIT FAIL ❌', e); process.exit(1); });
