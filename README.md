@@ -6,16 +6,23 @@ Two people open the same room link. One presses play/pause/seek → it happens f
 
 ---
 
-## How it works (cinemana mode — the main one)
+## How it works (important: cinemana is network-restricted)
 
-Paste a **cinemana movie/episode link** (or just the numeric ID) into the room. The server calls cinemana's public API to get:
+Cinemana is only reachable **from a specific country / ISP**. A cloud host (Render, Vercel, etc.) sits outside that network and **cannot reach cinemana at all**. So this app is built the only way that works:
 
-- the **direct MP4 stream** (highest quality available), and
-- the **subtitle files** (`.srt`/`.vtt`) that cinemana ships for that title.
+- **Each viewer's browser** fetches the video + subtitles directly from cinemana, over their own connection.
+- **The server only relays** play/pause/seek events and chat messages. It never touches cinemana, so it can be hosted anywhere.
 
-It plays the MP4 in a clean HTML5 player and loads those subtitles as **CC tracks** (turn them on with the player's CC button). Because it's our own player driving a plain video file, play / pause / seek sync **automatically and exactly** for both people — and you still get cinemana's subtitles.
+Both viewers must be on the network where cinemana works (and not on a VPN). Each browser resolves its **own** stream URL — necessary anyway, since cinemana's URLs are signed/expiring and typically IP-bound. That's why the app syncs the video **ID**, not the URL.
 
-> The browser can't call cinemana's API directly (cross-origin), so the Node server does it and also converts `.srt → .vtt` on the fly and serves the subtitles same-origin. Subtitle CC therefore needs the app to be running/deployed (it won't work opening the HTML files directly).
+Paste a **cinemana movie/episode link** (or just the numeric ID). The browser calls cinemana's API for the best MP4 plus the subtitle list, plays it in a clean HTML5 player, and attaches subtitles as **CC tracks** (blob URLs, so no CORS problems). Play / pause / seek then sync exactly for both people.
+
+### If subtitles (or the API) are blocked by CORS
+Cinemana's API may refuse direct browser requests. The app degrades gracefully:
+
+1. Press **🔍 Test** in the room — it reports exactly what's reachable.
+2. Use **💬 Add subtitle file** to load a `.srt`/`.vtt` from your PC (always works).
+3. Or grab the direct `.mp4` (F12 → Network → Media on cinemana) and paste that with **🔄 Change**.
 
 ### Other inputs it accepts
 - A **direct `.mp4` / `.m3u8` URL** → same automatic sync (no subtitles unless the stream has them).
