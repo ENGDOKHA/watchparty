@@ -13,8 +13,19 @@ const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- cinemana helpers ----------
+// fetch with a timeout so a slow/blocking upstream can't hang the request forever.
+async function fetchTimeout(url, opts = {}, ms = 12000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function cineFetch(pathname) {
-  const res = await fetch(`${CINEMANA_BASE}${pathname}`, {
+  const res = await fetchTimeout(`${CINEMANA_BASE}${pathname}`, {
     headers: { 'User-Agent': UA, 'Accept': 'application/json, text/plain, */*' },
   });
   if (!res.ok) throw new Error(`cinemana ${pathname} -> HTTP ${res.status}`);
@@ -81,12 +92,28 @@ app.get('/api/cinemana/:id', async (req, res) => {
   }
 });
 
+// Health + debug endpoints (plain text so they're easy to check from anywhere).
+app.get('/healthz', (_req, res) => res.type('text').send('ok'));
+app.get('/debug/cinemana/:id', async (req, res) => {
+  const id = req.params.id.replace(/\D/g, '');
+  try {
+    const data = await resolveCinemana(id);
+    res.type('text').send(
+      `OK id=${id}\ntitle=${data.title}\nvideoUrl=${data.videoUrl ? 'yes' : 'no'}\n` +
+      `quality=${data.quality}\nsubtitles=${data.subtitles.length}\n` +
+      data.subtitles.map(s => ' - ' + s.lang).join('\n')
+    );
+  } catch (e) {
+    res.status(502).type('text').send('CINEMANA FETCH FAILED from this server:\n' + e.message);
+  }
+});
+
 // Proxy + normalize a subtitle file to VTT, served same-origin (avoids CORS on <track>).
 app.get('/api/sub', async (req, res) => {
   const url = req.query.url;
   if (!url || !/^https?:\/\//.test(url)) return res.status(400).send('bad url');
   try {
-    const r = await fetch(url, { headers: { 'User-Agent': UA } });
+    const r = await fetchTimeout(url, { headers: { 'User-Agent': UA } });
     if (!r.ok) return res.status(502).send('sub fetch failed');
     let text = await r.text();
     if (!/^﻿?WEBVTT/.test(text)) text = srtToVtt(text); // convert if it isn't already VTT
