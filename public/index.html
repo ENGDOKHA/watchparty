@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cinema Watch Party</title>
+<style>
+  :root { --bg:#0e0f1a; --card:#171930; --accent:#7c5cff; --accent2:#ff5c9d; --text:#eef; --muted:#9aa0c3; }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; min-height:100vh; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: radial-gradient(1200px 600px at 20% -10%, #241a4d 0%, transparent 60%),
+                radial-gradient(900px 500px at 100% 0%, #3a1a3f 0%, transparent 55%), var(--bg);
+    color: var(--text); display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .card {
+    width:100%; max-width:520px; background: rgba(23,25,48,.75); backdrop-filter: blur(8px);
+    border:1px solid rgba(255,255,255,.08); border-radius:20px; padding:32px; box-shadow: 0 30px 80px rgba(0,0,0,.5);
+  }
+  h1 { margin:0 0 6px; font-size:28px; }
+  .logo { font-size:34px; }
+  p.sub { margin:0 0 22px; color:var(--muted); font-size:14px; line-height:1.5; }
+  label { display:block; font-size:13px; color:var(--muted); margin:16px 0 6px; }
+  input {
+    width:100%; padding:12px 14px; border-radius:12px; border:1px solid rgba(255,255,255,.12);
+    background:#0f1024; color:var(--text); font-size:15px; outline:none;
+  }
+  input:focus { border-color: var(--accent); }
+  .row { display:flex; gap:10px; }
+  .row > input { flex:1; }
+  button {
+    margin-top:22px; width:100%; padding:14px; border:0; border-radius:12px; cursor:pointer;
+    font-size:16px; font-weight:600; color:#fff; background: linear-gradient(120deg, var(--accent), var(--accent2)); transition: transform .08s;
+  }
+  button:active { transform: scale(.98); }
+  .dice { margin-top:0; flex:0 0 54px; font-size:20px; padding:12px; }
+  .hint { margin-top:16px; font-size:12px; color:var(--muted); line-height:1.6; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🎬✨</div>
+    <h1>Cinema Watch Party</h1>
+    <p class="sub">Watch a cinemana video in sync with a friend — with the site's real subtitles as CC — plus live chat. Share one room link.</p>
+
+    <label>Your name</label>
+    <input id="name" placeholder="e.g. Ali" maxlength="24" />
+
+    <label>Cinemana link, video ID, or a direct .mp4 URL</label>
+    <input id="src" placeholder="https://cinemana.shabakaty.com/video/25006" />
+
+    <label>Room code (share this with your friend)</label>
+    <div class="row">
+      <input id="room" placeholder="auto-generated" />
+      <button id="dice" type="button" class="dice">🎲</button>
+    </div>
+
+    <button id="go">Start / Join room →</button>
+
+    <p class="hint">
+      Paste a cinemana movie/episode link — subtitles load automatically as toggleable CC.
+      Play, pause and seek stay matched for both of you. You can also leave the video blank and load it inside the room.
+    </p>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  function rand(n){ const c='abcdefghjkmnpqrstuvwxyz23456789'; let s=''; for(let i=0;i<n;i++) s+=c[Math.floor(Math.random()*c.length)]; return s; }
+  $('dice').onclick = () => $('room').value = rand(6);
+  if(!$('room').value) $('room').value = rand(6);
+
+  function parseCinemanaId(input){
+    const s=(input||'').trim();
+    if(/^\d+$/.test(s)) return s;
+    if(/cinemana\.shabakaty\.com/i.test(s)){ const n=s.match(/\d{3,}/g); if(n) return n.sort((a,b)=>b.length-a.length)[0]; }
+    return null;
+  }
+
+  $('go').onclick = () => {
+    const name = ($('name').value || 'Guest').trim();
+    const room = ($('room').value || rand(6)).trim();
+    const raw = $('src').value.trim();
+    const q = new URLSearchParams({ name });
+    const cid = parseCinemanaId(raw);
+    if (cid) q.set('cid', cid); else if (raw) q.set('src', raw);
+    location.href = `/r/${encodeURIComponent(room)}?${q.toString()}`;
+  };
+  addEventListener('keydown', e => { if(e.key==='Enter') $('go').click(); });
+</script>
+</body>
+</html>
