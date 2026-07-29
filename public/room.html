@@ -43,6 +43,13 @@
     position:absolute; top:12px; left:12px; background:rgba(0,0,0,.72); border:1px solid var(--warn);
     color:var(--warn); padding:6px 12px; border-radius:999px; font-size:12.5px; display:none;
   }
+  .embedNote {
+    position:absolute; top:0; left:0; right:0; background:rgba(10,11,24,.94); border-bottom:1px solid var(--warn);
+    color:var(--text); padding:10px 14px; font-size:12.5px; display:none; line-height:1.6; z-index:5;
+  }
+  .embedNote b { color:var(--warn); }
+  .embedNote button { margin-left:8px; }
+  .embedNote .x { float:right; background:none; border:0; color:var(--muted); cursor:pointer; font-size:16px; padding:0 4px; }
 
   .controls { display:flex; gap:8px; align-items:center; padding:9px 12px; background:var(--panel); border-top:1px solid rgba(255,255,255,.07); flex-wrap:wrap; }
   .controls .muted { color:var(--muted); font-size:12px; }
@@ -86,6 +93,13 @@
   <section class="stage">
     <div class="videoWrap" id="videoWrap">
       <div class="bufBadge" id="bufBadge">⏳ Buffering — will skip ahead to catch up</div>
+      <div class="embedNote" id="embedNote">
+        <button class="x" id="noteX" title="hide">✕</button>
+        <b>Blank or blocked?</b> Most streaming sites refuse to be embedded, and we can't control their player anyway.
+        Get the real video link instead: open the movie on that site → press <b>F12</b> → <b>Network</b> tab → filter
+        <b>Media</b> → start playing → right-click the <b>.mp4</b> or <b>.m3u8</b> row → <b>Copy link address</b>.
+        <button class="tiny" id="notePaste">Paste that link</button>
+      </div>
       <div class="empty" id="empty">
         <p>Paste a <b>cinemana link</b> (or video ID, or any direct <b>.mp4</b> URL).</p>
         <input id="loadInput" placeholder="https://cinemana.shabakaty.com/video/25006  ·  or 25006  ·  or a .mp4 link" />
@@ -140,7 +154,9 @@ const params = new URLSearchParams(location.search);
 const roomId = decodeURIComponent(location.pathname.split('/r/')[1] || 'lobby');
 const myName = (params.get('name') || 'Guest').slice(0,24);
 const CINEMANA = 'https://cinemana.shabakaty.com';
+const HLS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js';
 const S = window.SyncLogic;
+const isHls = (u) => /\.m3u8(\?|$)/i.test(u || '');
 
 let currentSrc = params.get('src') || '';
 let currentCinemanaId = params.get('cid') || '';
@@ -195,11 +211,45 @@ let mySourceIsPrivate=false;  // true when I loaded my own different-site copy
 let qualities=[];             // quality options from cinemana for the current title
 let preferredQuality='';      // '' = auto/best; remembered for the next video too
 let switchingQuality=false;   // so a quality reload isn't mistaken for a buffering stall
+let hlsInst=null;             // hls.js instance when playing an .m3u8 stream
 
 function clearStage(){
+  if(hlsInst){ try{ hlsInst.destroy(); }catch{} hlsInst=null; }
   const w=$('videoWrap');
   [...w.querySelectorAll('video,iframe,.loader')].forEach(n=>n.remove());
-  $('empty').style.display='none'; videoEl=null; iframeEl=null;
+  $('empty').style.display='none'; $('embedNote').style.display='none';
+  videoEl=null; iframeEl=null;
+}
+
+// ---------- HLS (.m3u8) support ----------
+// Chrome can't play .m3u8 natively; load hls.js on demand when we need it.
+function ensureHls(){
+  if(window.Hls) return Promise.resolve(window.Hls);
+  return new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src=HLS_CDN; s.onload=()=>res(window.Hls); s.onerror=()=>rej(new Error('could not load hls.js'));
+    document.head.appendChild(s);
+  });
+}
+async function attachSource(src){
+  if(!videoEl) return;
+  if(!isHls(src)){ videoEl.src=src; return; }
+  // Safari/iOS play HLS natively.
+  if(videoEl.canPlayType('application/vnd.apple.mpegurl')){ videoEl.src=src; return; }
+  try{
+    const Hls=await ensureHls();
+    if(Hls && Hls.isSupported()){
+      if(hlsInst){ try{ hlsInst.destroy(); }catch{} }
+      hlsInst=new Hls({ enableWorker:true });
+      hlsInst.on(Hls.Events.ERROR,(_e,d)=>{ if(d && d.fatal) systemMsg('Stream error: '+(d.details||'unknown')); });
+      hlsInst.loadSource(src);
+      hlsInst.attachMedia(videoEl);
+      systemMsg('Playing an HLS (.m3u8) stream.');
+    } else { videoEl.src=src; }
+  }catch(e){
+    systemMsg('This is an .m3u8 stream but the HLS player could not load ('+e.message+'). Try a .mp4 link instead.');
+    videoEl.src=src;
+  }
 }
 function showLoader(html){
   clearStage();
@@ -218,8 +268,9 @@ function addTrack(text,label){
 function mountVideo(src){
   clearStage();
   videoEl=document.createElement('video');
-  videoEl.controls=true; videoEl.playsInline=true; videoEl.src=src;   // no crossOrigin (would break cinemana)
+  videoEl.controls=true; videoEl.playsInline=true;    // no crossOrigin (would break cinemana)
   $('videoWrap').appendChild(videoEl);
+  attachSource(src);                                  // handles .mp4 and .m3u8
   wireVideo();
   $('controls').style.display='flex';
   $('pingbar').style.display='none';
@@ -230,6 +281,7 @@ function mountIframe(src){
   iframeEl=document.createElement('iframe');
   iframeEl.src=src; iframeEl.allow='autoplay; fullscreen; encrypted-media'; iframeEl.allowFullscreen=true;
   $('videoWrap').appendChild(iframeEl);
+  $('embedNote').style.display='block';   // most sites block embedding — tell them how to fix it
   $('controls').style.display='flex'; $('pingbar').style.display='flex';
 }
 
@@ -304,8 +356,8 @@ function switchQuality(key){
   switchingQuality=true;
   suppressUntil=Date.now()+2500;      // swallow the resulting seek/play/pause events
   currentSrc=q.videoUrl;
-  videoEl.src=q.videoUrl;
-  videoEl.load();
+  attachSource(q.videoUrl);
+  if(!isHls(q.videoUrl)) videoEl.load();
   const restore=()=>{
     try{ videoEl.currentTime=at; }catch{}
     if(wasPlaying) videoEl.play().catch(()=>{});
@@ -447,6 +499,7 @@ function doLoad(input, forEveryone){
   buildQualityUI([]);
   if(forEveryone) send({type:'load',mode:'iframe',src});
   mountIframe(src); loadedKey='iframe:'+src;
+  systemMsg('That page will be embedded. If it shows blank or an error, the site blocks embedding — use the direct .mp4/.m3u8 link instead (see the note on the video).');
 }
 
 // ---------- chat ----------
@@ -491,6 +544,11 @@ $('offSet').onclick=()=>{
   myOffset = videoEl.currentTime - lastGroupMovieTime;
   showOffset(); toast('Aligned — this frame matches the group');
   systemMsg(`Alignment set to ${myOffset.toFixed(1)}s for your copy.`);
+};
+$('noteX').onclick=()=>{ $('embedNote').style.display='none'; };
+$('notePaste').onclick=()=>{
+  const v=prompt('Paste the direct video link (.mp4 or .m3u8) you copied:');
+  if(v && v.trim()) doLoad(v.trim(), false);   // personal source; her copy stays hers
 };
 $('qualitySel').onchange=e=>switchQuality(e.target.value);
 $('subBtn').onclick=()=>$('subFile').click();
