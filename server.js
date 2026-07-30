@@ -178,8 +178,13 @@ app.get('/r/:roomId', (_req, res) => res.sendFile(path.join(__dirname, 'public',
 
 // ---------- WebSocket sync + chat ----------
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
-const rooms = new Map(); // roomId -> { clients:Set, state, chat:[], hostId, seq }
+// maxPayload leaves room for a shared subtitle file (they're small, but not tiny).
+const wss = new WebSocketServer({ server, maxPayload: 2 * 1024 * 1024 });
+
+const MAX_SUB_CHARS = 600 * 1024;  // one subtitle file
+const MAX_SUB_TRACKS = 6;
+
+const rooms = new Map(); // roomId -> { clients:Set, state, chat:[], subs:[], hostId, seq }
 let nextClientId = 1;
 
 function getRoom(roomId) {
@@ -190,6 +195,9 @@ function getRoom(roomId) {
       // movieTime = position on the SHARED timeline (each viewer maps it to their own copy)
       state: { mode: 'video', src: null, cinemanaId: null, movieTime: 0, paused: true, updatedAt: Date.now() },
       chat: [],
+      // Subtitle files shared into the room. Whoever CAN fetch them shares them,
+      // so a viewer whose network can't reach the subtitle host still gets them.
+      subs: [],
       hostId: null,   // the timing leader: only their drift reports are authoritative
       seq: 0,         // increments on every state change so clients can drop stale messages
     };
@@ -219,7 +227,7 @@ wss.on('connection', (ws, req) => {
   if (room.hostId === null) room.hostId = ws.clientId; // first person leads the timing
 
   ws.send(JSON.stringify({
-    type: 'welcome', state: room.state, chat: room.chat, count: room.clients.size,
+    type: 'welcome', state: room.state, chat: room.chat, subs: room.subs, count: room.clients.size,
     youAre: ws.clientId, hostId: room.hostId, hostName: hostName(room), seq: room.seq,
   }));
   broadcast(room, { type: 'presence', count: room.clients.size, name, event: 'join' }, ws);
@@ -253,7 +261,22 @@ wss.on('connection', (ws, req) => {
           movieTime: 0, paused: true, updatedAt: Date.now(),
         };
         room.seq++;
+        room.subs = [];   // new movie -> old subtitles no longer apply
         broadcast(room, { type: 'load', ...room.state, seq: room.seq, by: name });
+        break;
+      }
+      // Someone fetched a subtitle file and is sharing it with the room.
+      case 'subtitle': {
+        const text = String(data.text || '');
+        const label = String(data.label || 'Subtitle').slice(0, 60);
+        if (!text || text.length > MAX_SUB_CHARS) return;
+        if (room.subs.length >= MAX_SUB_TRACKS) return;
+        // Skip near-duplicates (same label and size).
+        if (room.subs.some(s => s.label === label && s.text.length === text.length)) return;
+        const entry = { label, text, by: name };
+        room.subs.push(entry);
+        broadcast(room, { type: 'subtitle', ...entry }, ws);
+        broadcast(room, { type: 'chat', name: 'system', text: `${name} shared subtitles: ${label}`, t: Date.now() });
         break;
       }
       case 'chat': {

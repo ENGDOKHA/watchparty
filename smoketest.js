@@ -16,7 +16,11 @@ const R = {
   followerTickIgnored: true,   // stays true unless a follower tick leaks through
   leaderTickRelayed: false,
   handoverWorks: false,
+  subShared: false,          // subtitle reaches the other viewer
+  subInWelcome: false,       // and a late joiner gets it too
+  subNotEchoed: true,        // sender must not receive its own subtitle back
 };
+const SUB = 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nمرحبا\n';
 
 function waitForPort(port, tries = 60) {
   return new Promise((resolve, reject) => {
@@ -56,11 +60,14 @@ const open = (name) => new Promise((res, rej) => {
     if (m.type === 'sync' && m.action === 'play' && m.movieTime === 5) R.syncRelayed = true;
     if (m.type === 'sync' && m.action === 'tick' && m.movieTime === 42) R.leaderTickRelayed = true;
     if (m.type === 'chat' && m.text === 'hi there') R.chatRelayed = true;
+    // Sara cannot reach cinemana, but Ali shares the file through the room.
+    if (m.type === 'subtitle' && m.text === SUB && m.label === 'ar') R.subShared = true;
   });
-  // The leader must NEVER receive a follower's drift heartbeat.
+  // The leader must NEVER receive a follower's drift heartbeat, nor its own subtitle back.
   a.on('message', d => {
     const m = JSON.parse(d);
     if (m.type === 'sync' && m.action === 'tick') R.followerTickIgnored = false;
+    if (m.type === 'subtitle') R.subNotEchoed = false;
   });
 
   await new Promise(r => setTimeout(r, 300));
@@ -69,6 +76,7 @@ const open = (name) => new Promise((res, rej) => {
   a.send(JSON.stringify({ type: 'sync', action: 'play', movieTime: 5, paused: false }));
   a.send(JSON.stringify({ type: 'chat', text: 'hi there' }));
   a.send(JSON.stringify({ type: 'sync', action: 'tick', movieTime: 42, paused: false }));  // leader tick -> relayed
+  a.send(JSON.stringify({ type: 'subtitle', label: 'ar', text: SUB }));                    // shared to the room
   // Follower (buffering, frozen at 3s) tries to report position -> must be dropped.
   b.send(JSON.stringify({ type: 'sync', action: 'tick', movieTime: 3, paused: false }));
 
@@ -80,6 +88,7 @@ const open = (name) => new Promise((res, rej) => {
     c.on('message', d => {
       const m = JSON.parse(d);
       if (m.type === 'welcome' && m.state && m.state.cinemanaId === '25006' && m.state.mode === 'cinemana') R.catchUp = true;
+      if (m.type === 'welcome' && (m.subs || []).some(s => s.text === SUB)) R.subInWelcome = true;
       r();
     });
     setTimeout(r, 800);

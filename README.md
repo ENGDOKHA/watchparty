@@ -118,6 +118,15 @@ with "Load for everyone".
 Subtitles for such files: use **🌐 Subs from cinemana** to borrow cinemana's subtitle track for
 the same movie, then align it with the **Subs ±0.5s** buttons.
 
+### Shared subtitles (when only one of you can reach the subtitle source)
+
+Subtitles are **relayed through the room**. Whoever can fetch a subtitle (or loads a `.srt` from
+their PC) automatically shares the file with everyone else, and late joiners receive it on connect.
+So if only one viewer can reach cinemana, they get the subtitles and the other viewer still sees
+them. Each person keeps their own **Subs ±0.5s** timing, since their copy of the video may differ.
+
+Limits: up to 6 tracks per room, 600 KB each; cleared when a new movie is loaded for everyone.
+
 ## API endpoints (used internally)
 
 - `GET /api/cinemana/:id` → `{ title, videoUrl, quality, subtitles:[{lang,url}] }`

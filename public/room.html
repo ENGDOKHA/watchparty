@@ -284,10 +284,17 @@ function renderSubs(){
   try{ const tt=videoEl.textTracks; if(tt&&tt.length) tt[Math.min(wanted,tt.length-1)].mode='showing'; }catch{}
   showSubDelay();
 }
-function addTrack(text,label){
-  if(!videoEl) return false;
+// share=true -> also push this subtitle to the room, so someone who can't reach
+// the subtitle host (or cinemana at all) still gets it.
+function addTrack(text,label,share){
+  if(!text) return false;
+  if(subTracks.some(s=>s.label===label && s.text.length===text.length)) return true; // no duplicates
   subTracks.push({ text, label });
   renderSubs();
+  if(share){
+    if(text.length>600*1024) systemMsg('Subtitle too large to share with the room.');
+    else { send({ type:'subtitle', label, text }); systemMsg(`Shared "${label}" with the room.`); }
+  }
   return true;
 }
 function setSubDelay(d){
@@ -296,14 +303,16 @@ function setSubDelay(d){
   systemMsg(`Subtitle timing: ${subDelay>=0?'+':''}${subDelay.toFixed(1)}s (only for you).`);
 }
 
+function clearSubs(){ subTracks=[]; subDelay=0; showSubDelay(); }
+
 function mountVideo(src){
   clearStage();
-  subTracks=[]; subDelay=0; showSubDelay();          // fresh video, fresh subtitles
   videoEl=document.createElement('video');
   videoEl.controls=true; videoEl.playsInline=true;    // no crossOrigin (would break cinemana)
   $('videoWrap').appendChild(videoEl);
   attachSource(src);                                  // handles .mp4 and .m3u8
   wireVideo();
+  renderSubs();     // keep subtitles when only the SOURCE changed (same movie)
   $('controls').style.display='flex';
   $('pingbar').style.display='none';
   showOffset();
@@ -481,7 +490,7 @@ async function loadCinemana(id){
                   .filter(t=>t.url&&!/defaultImages\/loading\.gif/i.test(t.url));
   let added=0;
   for(const t of usable.slice(0,6)){
-    try{ const r=await fetch(t.url); if(!r.ok) continue; addTrack(await r.text(),t.lang); added++; }catch{}
+    try{ const r=await fetch(t.url); if(!r.ok) continue; addTrack(await r.text(),t.lang,true); added++; }catch{}
   }
   if(added) systemMsg(`${added} subtitle track(s) loaded — pick one with the CC button.`);
   else if(usable.length) systemMsg('Subtitles were blocked by the browser. Use “💬 Subtitle file” to load a .srt from your PC.');
@@ -505,7 +514,7 @@ async function borrowCinemanaSubs(){
     if(!list.length){ systemMsg('Cinemana lists no subtitles for that ID.'); return; }
     let n=0;
     for(const s of list.slice(0,6)){
-      try{ const r=await fetch(s.url); if(!r.ok) continue; addTrack(await r.text(),'cinemana · '+s.lang); n++; }catch{}
+      try{ const r=await fetch(s.url); if(!r.ok) continue; addTrack(await r.text(),'cinemana · '+s.lang,true); n++; }catch{}
     }
     systemMsg(n
       ? `Added ${n} subtitle track(s) from cinemana. Enable with CC; if the timing is off, nudge it with the Subs ±0.5s buttons.`
@@ -523,6 +532,11 @@ function handle(m){
       myId=m.youAre; hostId=m.hostId; lastSeq=m.seq||0; updateHostPill();
       $('count').textContent=m.count;
       (m.chat||[]).forEach(c=>addChat(c,false));
+      // Subtitles already shared into this room (maybe by someone who can reach cinemana).
+      if(m.subs && m.subs.length){
+        m.subs.forEach(s=>addTrack(s.text, s.label, false));
+        systemMsg(`${m.subs.length} subtitle track(s) received from the room.`);
+      }
       if(m.state&&(m.state.src||m.state.cinemanaId)) applyState(m.state,true);
       else if(currentCinemanaId) doLoad(currentCinemanaId,false);
       else if(currentSrc) doLoad(currentSrc,false);
@@ -533,7 +547,11 @@ function handle(m){
       applyState(m, m.action!=='tick');
       if(m.action&&m.action!=='tick') toast(`${m.by} pressed ${m.action}`);
       break;
-    case 'load': mySourceIsPrivate=false; applyState(m,true); systemMsg(`${m.by} loaded a video for everyone`); break;
+    case 'load': mySourceIsPrivate=false; clearSubs(); applyState(m,true); systemMsg(`${m.by} loaded a video for everyone`); break;
+    case 'subtitle':
+      addTrack(m.text, m.label, false);   // received — don't echo it back
+      systemMsg(`Got subtitles "${m.label}" from ${m.by}. Enable with CC; adjust with Subs ±0.5s.`);
+      break;
     case 'chat': m.name==='system' ? systemMsg(m.text) : addChat(m,m.name===myName); break;
     case 'buffering': systemMsg(`${m.by} is ${m.active?'buffering…':'back'}`); break;
     case 'ping': toast(`👉 ${m.by}: ${m.action} now!`); break;
@@ -554,6 +572,7 @@ async function doLoad(input, forEveryone){
   if(!src){ systemMsg('Paste a link first.'); return; }
   mySourceIsPrivate=!forEveryone;
 
+  if(forEveryone) clearSubs();     // new movie for the room -> drop old subtitles
   const cid=parseCinemanaId(input);
   if(cid){ if(forEveryone) send({type:'load',mode:'cinemana',cinemanaId:cid}); loadCinemana(cid); return; }
   if(isDirectVideo(src)){ playDirect(src, forEveryone); return; }
@@ -635,7 +654,7 @@ $('subBtn').onclick=()=>$('subFile').click();
 $('subFile').onchange=e=>{
   const f=e.target.files[0]; if(!f) return;
   const fr=new FileReader();
-  fr.onload=()=>{ addTrack(fr.result,f.name.replace(/\.[^.]+$/,'')) ? systemMsg('Subtitle added — enable with CC.') : systemMsg('Load a video first.'); };
+  fr.onload=()=>{ addTrack(fr.result,f.name.replace(/\.[^.]+$/,''),true); systemMsg('Subtitle added — enable with CC. It was shared with the room too.'); };
   fr.readAsText(f,'utf-8');
 };
 $('copyBtn').onclick=async()=>{
