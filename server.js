@@ -92,6 +92,54 @@ app.get('/api/cinemana/:id', async (req, res) => {
   }
 });
 
+// ---------- generic page -> stream resolver ----------
+// A page like /show/play/1041177 hides its real file (e.g. cloud02.../<uuid>.mp4).
+// The browser can't read another site's HTML (CORS), so the server does it and
+// pulls out any .mp4/.m3u8 links it can find.
+function extractStreams(html, baseUrl) {
+  if (!html) return [];
+  const text = String(html).replace(/\\\//g, '/').replace(/&amp;/g, '&'); // unescape JSON/HTML
+  const found = new Set();
+
+  const abs = /https?:\/\/[^\s"'<>\\)]+?\.(?:mp4|m3u8)(?:\?[^\s"'<>\\)]*)?/gi;
+  let m;
+  while ((m = abs.exec(text))) found.add(m[0]);
+
+  // root-relative or protocol-relative links
+  if (baseUrl) {
+    try {
+      const b = new URL(baseUrl);
+      const rel = /["'(](\/{1,2}[^\s"'<>)]+?\.(?:mp4|m3u8)(?:\?[^\s"'<>)]*)?)["')]/gi;
+      let r;
+      while ((r = rel.exec(text))) {
+        const raw = r[1].startsWith('//') ? b.protocol + r[1] : r[1];
+        found.add(new URL(raw, b.origin).href);
+      }
+    } catch {}
+  }
+
+  // Prefer progressive .mp4 (simplest to sync) over .m3u8, then longer/more specific URLs.
+  return [...found].sort((a, b) => {
+    const am = /\.mp4/i.test(a) ? 0 : 1, bm = /\.mp4/i.test(b) ? 0 : 1;
+    return am - bm || b.length - a.length;
+  });
+}
+
+app.get('/api/resolve', async (req, res) => {
+  const url = req.query.url;
+  if (!url || !/^https?:\/\//.test(url)) return res.status(400).json({ error: 'bad url' });
+  try {
+    const origin = new URL(url).origin;
+    const r = await fetchTimeout(url, {
+      headers: { 'User-Agent': UA, 'Accept': 'text/html,application/xhtml+xml,*/*', 'Referer': origin + '/' },
+    }, 15000);
+    const html = await r.text();
+    res.json({ ok: true, status: r.status, streams: extractStreams(html, url) });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // Health + debug endpoints (plain text so they're easy to check from anywhere).
 app.get('/healthz', (_req, res) => res.type('text').send('ok'));
 app.get('/debug/cinemana/:id', async (req, res) => {
@@ -240,7 +288,7 @@ wss.on('connection', (ws, req) => {
 });
 
 // Exported for unit tests; only listen when run directly.
-module.exports = { srtToVtt, pickBest, resolveCinemana };
+module.exports = { srtToVtt, pickBest, resolveCinemana, extractStreams };
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, () => console.log(`Ghurfatna running on http://localhost:${PORT}`));

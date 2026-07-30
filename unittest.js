@@ -1,6 +1,6 @@
 // Unit tests for the cinemana resolver, subtitle conversion, quality pick, and id parsing.
 const assert = require('assert');
-const { srtToVtt, pickBest, resolveCinemana } = require('./server.js');
+const { srtToVtt, pickBest, resolveCinemana, extractStreams } = require('./server.js');
 
 let pass = 0;
 const ok = (name, cond) => { assert.ok(cond, name); console.log('  ✓', name); pass++; };
@@ -102,6 +102,51 @@ global.fetch = async (url) => {
   // Two viewers, same list, different choices -> different streams (independent quality).
   ok('viewers get independent streams',
      S.chooseQuality(QL,'mp4-480').videoUrl !== S.chooseQuality(QL,'mp4-1080').videoUrl);
+
+  // ---------- 7) subtitle re-timing (borrowed subs from another copy) ----------
+  const cue = 'WEBVTT\n\n1\n00:00:10.000 --> 00:00:12.500\nHello\n';
+  ok('no shift returns input unchanged', S.shiftVtt(cue, 0) === cue);
+  ok('positive shift delays cues',
+     S.shiftVtt(cue, 2).includes('00:00:12.000 --> 00:00:14.500'));
+  ok('negative shift advances cues',
+     S.shiftVtt(cue, -3).includes('00:00:07.000 --> 00:00:09.500'));
+  ok('never goes below zero',
+     S.shiftVtt(cue, -60).includes('00:00:00.000 --> 00:00:00.000'));
+  ok('fractional shift works',
+     S.shiftVtt(cue, 0.25).includes('00:00:10.250 --> 00:00:12.750'));
+  ok('ms carry rolls into seconds',
+     S.shiftVtt('00:00:10.800 --> 00:00:11.000', 0.5).startsWith('00:00:11.300'));
+  ok('minute/hour carry works',
+     S.shiftVtt('00:59:59.500 --> 01:00:00.000', 1).startsWith('01:00:00.500'));
+  // SRT comma timestamps are accepted too
+  ok('srt comma format shifts',
+     S.shiftVtt('00:00:05,000 --> 00:00:06,000', 1).startsWith('00:00:06.000'));
+  ok('subtitle text is untouched', S.shiftVtt(cue, 5).includes('Hello'));
+
+  // ---------- 8) page -> stream extraction (albox-style pages) ----------
+  const ALBOX = 'https://cinema.albox.co/show/play/1041177';
+  const MP4 = 'https://cloud02.albox.co/episodes/4e453ac5-0c1a-4b37-8c6f-4184f24c6ddf.mp4';
+
+  ok('finds a plain mp4 in a <source> tag',
+     extractStreams(`<video><source src="${MP4}" type="video/mp4"></video>`, ALBOX)[0] === MP4);
+  ok('finds an mp4 inside escaped JSON',
+     extractStreams(`{"file":"https:\\/\\/cloud02.albox.co\\/episodes\\/4e453ac5-0c1a-4b37-8c6f-4184f24c6ddf.mp4"}`, ALBOX)[0] === MP4);
+  ok('resolves a root-relative path against the page origin',
+     extractStreams(`<source src="/episodes/abc.mp4">`, ALBOX)[0] === 'https://cinema.albox.co/episodes/abc.mp4');
+  ok('resolves a protocol-relative url',
+     extractStreams(`<source src="//cloud02.albox.co/episodes/x.mp4">`, ALBOX)[0] === 'https://cloud02.albox.co/episodes/x.mp4');
+  ok('decodes &amp; in query strings',
+     extractStreams(`<source src="https://h/v.mp4?a=1&amp;b=2">`, ALBOX)[0] === 'https://h/v.mp4?a=1&b=2');
+  ok('prefers mp4 over m3u8',
+     extractStreams(`"https://h/a.m3u8" "${MP4}"`, ALBOX)[0] === MP4);
+  ok('still finds m3u8 when that is all there is',
+     extractStreams(`"https://h/master.m3u8"`, ALBOX)[0] === 'https://h/master.m3u8');
+  ok('de-duplicates repeats',
+     extractStreams(`"${MP4}" "${MP4}"`, ALBOX).length === 1);
+  ok('ignores pages with no media', extractStreams('<html><img src="a.png"></html>', ALBOX).length === 0);
+  ok('empty html is safe', extractStreams('', ALBOX).length === 0);
+  ok('null html is safe', extractStreams(null, ALBOX).length === 0);
+  ok('bad base url does not throw', Array.isArray(extractStreams(`<source src="/a.mp4">`, 'not a url')));
 
   console.log(`\nUNIT: ${pass} checks passed ✅`);
 })().catch(e => { console.error('UNIT FAIL ❌', e); process.exit(1); });

@@ -125,8 +125,15 @@
         <button class="ghost tiny" id="offSet" title="Say: my current frame = the group's current moment">Match now</button>
       </div>
       <select id="qualitySel" title="Quality — affects only your screen" style="display:none"></select>
+      <button class="ghost tiny" id="cineSubBtn" title="Take subtitles from cinemana's copy of this movie">🌐 Subs from cinemana</button>
       <button class="ghost tiny" id="subBtn">💬 Subtitle file</button>
       <input type="file" id="subFile" accept=".srt,.vtt,text/plain" style="display:none" />
+      <div class="offsetBox" id="subBox" style="display:none">
+        <span>Subs</span>
+        <button class="ghost tiny" id="subMinus" title="subtitles appear earlier">−0.5s</button>
+        <span id="subVal">0.0s</span>
+        <button class="ghost tiny" id="subPlus" title="subtitles appear later">+0.5s</button>
+      </div>
       <button class="ghost tiny" id="changeBtn">🔄 Change</button>
       <span class="spacer"></span>
       <div class="pingbar" id="pingbar">
@@ -256,17 +263,42 @@ function showLoader(html){
   const d=document.createElement('div'); d.className='loader'; d.innerHTML=html;
   $('videoWrap').appendChild(d);
 }
+// Subtitles are kept as raw text so they can be re-timed on demand.
+let subTracks=[];   // [{label, text}]
+let subDelay=0;     // seconds; + = show later
+function showSubDelay(){
+  $('subVal').textContent=(subDelay>=0?'+':'')+subDelay.toFixed(1)+'s';
+  $('subBox').style.display = subTracks.length ? 'flex' : 'none';
+}
+function renderSubs(){
+  if(!videoEl) return;
+  const wanted=(()=>{ try{ for(let i=0;i<videoEl.textTracks.length;i++) if(videoEl.textTracks[i].mode==='showing') return i; }catch{} return 0; })();
+  [...videoEl.querySelectorAll('track')].forEach(t=>t.remove());
+  subTracks.forEach((s,i)=>{
+    const tr=document.createElement('track');
+    tr.kind='subtitles'; tr.label=s.label||('Subtitle '+(i+1)); tr.srclang='ar';
+    tr.src=URL.createObjectURL(new Blob([S.shiftVtt(srtToVtt(s.text), subDelay)],{type:'text/vtt'}));
+    if(i===wanted) tr.default=true;
+    videoEl.appendChild(tr);
+  });
+  try{ const tt=videoEl.textTracks; if(tt&&tt.length) tt[Math.min(wanted,tt.length-1)].mode='showing'; }catch{}
+  showSubDelay();
+}
 function addTrack(text,label){
   if(!videoEl) return false;
-  const tr=document.createElement('track');
-  tr.kind='subtitles'; tr.label=label||'Subtitle'; tr.srclang='ar'; tr.src=subBlob(text); tr.default=true;
-  videoEl.appendChild(tr);
-  try{ const tt=videoEl.textTracks[videoEl.textTracks.length-1]; if(tt) tt.mode='showing'; }catch{}
+  subTracks.push({ text, label });
+  renderSubs();
   return true;
+}
+function setSubDelay(d){
+  subDelay=Math.round(d*10)/10;
+  renderSubs();
+  systemMsg(`Subtitle timing: ${subDelay>=0?'+':''}${subDelay.toFixed(1)}s (only for you).`);
 }
 
 function mountVideo(src){
   clearStage();
+  subTracks=[]; subDelay=0; showSubDelay();          // fresh video, fresh subtitles
   videoEl=document.createElement('video');
   videoEl.controls=true; videoEl.playsInline=true;    // no crossOrigin (would break cinemana)
   $('videoWrap').appendChild(videoEl);
@@ -455,6 +487,32 @@ async function loadCinemana(id){
   else if(usable.length) systemMsg('Subtitles were blocked by the browser. Use “💬 Subtitle file” to load a .srt from your PC.');
 }
 
+// Take ONLY the subtitles from cinemana and attach them to whatever is playing,
+// so an albox (or any other) .mp4 can use cinemana's subtitles.
+async function borrowCinemanaSubs(){
+  if(!videoEl){ systemMsg('Load a video first, then borrow subtitles.'); return; }
+  const v=prompt('Cinemana link or ID for the SAME movie (its subtitles will be used):', currentCinemanaId||'');
+  if(!v) return;
+  const t=v.trim();
+  const id=parseCinemanaId(t) || (/^\d+$/.test(t)?t:null);
+  if(!id){ systemMsg('Could not read a cinemana ID from that link.'); return; }
+  systemMsg('Fetching subtitles from cinemana…');
+  try{
+    const res=await cineJson(`/api/android/translationFiles/id/${id}`);
+    const raw=(res&&(Array.isArray(res.translations)?res.translations:(Array.isArray(res)?res:[])))||[];
+    const list=raw.map(s=>({lang:String(s.name||s.type||'sub'),url:s.file||s.url}))
+                  .filter(s=>s.url&&!/defaultImages\/loading\.gif/i.test(s.url));
+    if(!list.length){ systemMsg('Cinemana lists no subtitles for that ID.'); return; }
+    let n=0;
+    for(const s of list.slice(0,6)){
+      try{ const r=await fetch(s.url); if(!r.ok) continue; addTrack(await r.text(),'cinemana · '+s.lang); n++; }catch{}
+    }
+    systemMsg(n
+      ? `Added ${n} subtitle track(s) from cinemana. Enable with CC; if the timing is off, nudge it with the Subs ±0.5s buttons.`
+      : 'Found subtitles but the browser could not download them. Try “💬 Subtitle file” instead.');
+  }catch(e){ systemMsg('Could not fetch cinemana subtitles: '+e.message); }
+}
+
 // ---------- messages ----------
 function handle(m){
   if((m.type==='sync'||m.type==='load') && !S.isFresh(m.seq,lastSeq)) return;  // drop stale/out-of-order
@@ -485,21 +543,40 @@ function updateHostPill(){
   $('hostPill').textContent = isHost() ? '⏱ You lead timing' : '⏱ Following';
 }
 
-function doLoad(input, forEveryone){
+function playDirect(src, forEveryone){
+  buildQualityUI([]);                  // a single file has no alternates
+  if(forEveryone) send({type:'load',mode:'video',src});
+  currentSrc=src; currentCinemanaId=''; mountVideo(src); loadedKey='video:'+src;
+}
+
+async function doLoad(input, forEveryone){
   const src=(input||'').trim();
   if(!src){ systemMsg('Paste a link first.'); return; }
   mySourceIsPrivate=!forEveryone;
+
   const cid=parseCinemanaId(input);
   if(cid){ if(forEveryone) send({type:'load',mode:'cinemana',cinemanaId:cid}); loadCinemana(cid); return; }
-  if(isDirectVideo(src)){
-    buildQualityUI([]);            // a single file has no alternates
-    if(forEveryone) send({type:'load',mode:'video',src});
-    currentSrc=src; currentCinemanaId=''; mountVideo(src); loadedKey='video:'+src; return;
+  if(isDirectVideo(src)){ playDirect(src, forEveryone); return; }
+
+  // Some other site's page: ask our server to dig the real video file out of the HTML.
+  showLoader('Looking for the video file inside that page…');
+  try{
+    const r=await fetch('/api/resolve?url='+encodeURIComponent(src));
+    const j=await r.json();
+    if(j && j.streams && j.streams.length){
+      systemMsg(`Found the video file automatically (${j.streams.length} candidate${j.streams.length>1?'s':''}).`);
+      playDirect(j.streams[0], forEveryone);
+      return;
+    }
+    systemMsg('Our server opened that page but found no video file in it — the link is probably inserted by scripts.');
+  }catch(e){
+    systemMsg('Server could not open that page ('+e.message+'). It may only be reachable from your own network.');
   }
+
+  // Last resort: embed the page and explain how to get the direct link.
   buildQualityUI([]);
   if(forEveryone) send({type:'load',mode:'iframe',src});
   mountIframe(src); loadedKey='iframe:'+src;
-  systemMsg('That page will be embedded. If it shows blank or an error, the site blocks embedding — use the direct .mp4/.m3u8 link instead (see the note on the video).');
 }
 
 // ---------- chat ----------
@@ -551,6 +628,9 @@ $('notePaste').onclick=()=>{
   if(v && v.trim()) doLoad(v.trim(), false);   // personal source; her copy stays hers
 };
 $('qualitySel').onchange=e=>switchQuality(e.target.value);
+$('cineSubBtn').onclick=borrowCinemanaSubs;
+$('subMinus').onclick=()=>setSubDelay(subDelay-0.5);
+$('subPlus').onclick =()=>setSubDelay(subDelay+0.5);
 $('subBtn').onclick=()=>$('subFile').click();
 $('subFile').onchange=e=>{
   const f=e.target.files[0]; if(!f) return;

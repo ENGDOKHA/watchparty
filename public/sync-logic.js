@@ -47,6 +47,23 @@
     return typeof seq !== 'number' || seq > lastSeq;
   }
 
+  // ---- subtitle timing ----
+  // Shift every timestamp in an SRT/VTT body by `seconds` (can be negative).
+  // Used when subtitles come from a different copy of the movie than the video.
+  function shiftVtt(text, seconds) {
+    if (!seconds || !text) return text;
+    const pad = (n, l) => String(n).padStart(l || 2, '0');
+    return String(text).replace(/(\d{2,}):(\d{2}):(\d{2})[.,](\d{3})/g, (_all, h, m, s, ms) => {
+      let totalMs = (+h) * 3600000 + (+m) * 60000 + (+s) * 1000 + (+ms) + Math.round(seconds * 1000);
+      if (totalMs < 0) totalMs = 0;
+      const hh = Math.floor(totalMs / 3600000);
+      const mm = Math.floor((totalMs % 3600000) / 60000);
+      const ss = Math.floor((totalMs % 60000) / 1000);
+      const mmm = totalMs % 1000;
+      return `${pad(hh)}:${pad(mm)}:${pad(ss)}.${pad(mmm, 3)}`;
+    });
+  }
+
   // ---- quality selection (per viewer, never shared) ----
   function resNum(q) {
     const m = String((q && (q.resolution || q.name)) || '').match(/(\d+)/);
@@ -81,7 +98,7 @@
   }
 
   return {
-    decide, toMovieTime, toLocalTime, stallSkip, isFresh,
+    decide, toMovieTime, toLocalTime, stallSkip, isFresh, shiftVtt,
     resNum, qKey, bestQuality, chooseQuality, sortedQualities,
     SOFT_DRIFT, HARD_DRIFT, HARD_COOLDOWN_MS, MAX_SKIP,
   };

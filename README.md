@@ -99,10 +99,31 @@ The old naive approach oscillates: one person buffers, broadcasts a frozen posit
 - **Deadband + easing.** Drift under 0.35s is ignored; up to 2.5s is smoothed out with a ±5% playback-speed nudge; only bigger gaps cause a jump, and never more than once every 4s.
 - **Sequence numbers** drop stale/out-of-order messages.
 
+## Other sites (albox etc.)
+
+Paste any site's **watch-page URL** and the server fetches that page and digs the real
+`.mp4`/`.m3u8` out of the HTML (the browser can't — cross-origin). If it finds one, it plays
+it with full sync. Order of attempts:
+
+1. Cinemana link/ID → cinemana API (in your browser).
+2. A direct `.mp4`/`.m3u8` → played immediately (`.m3u8` via hls.js).
+3. Any other page → `GET /api/resolve` scrapes it for a stream link.
+4. Nothing found → the page is embedded, with instructions for grabbing the link by hand.
+
+Note that a page ID (e.g. `/show/play/1041177`) usually maps to an opaque file name
+(`/episodes/<uuid>.mp4`) that **cannot be computed** — it has to be read from the page or API.
+If the host's file URL has no token/expiry in it, it works for both viewers and can be shared
+with "Load for everyone".
+
+Subtitles for such files: use **🌐 Subs from cinemana** to borrow cinemana's subtitle track for
+the same movie, then align it with the **Subs ±0.5s** buttons.
+
 ## API endpoints (used internally)
 
 - `GET /api/cinemana/:id` → `{ title, videoUrl, quality, subtitles:[{lang,url}] }`
 - `GET /api/sub?url=<subtitleUrl>` → the subtitle normalized to WebVTT, served same-origin
+- `GET /api/resolve?url=<pageUrl>` → `{ streams:[...] }` scraped from that page
+- `GET /debug/cinemana/:id`, `GET /healthz` → diagnostics
 
 ---
 
